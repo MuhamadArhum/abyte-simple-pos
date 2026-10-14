@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Activity, ArrowDownRight, ArrowUpRight, BarChart3, Bell, ChevronDown,
   CircleHelp, ClipboardList, CreditCard, LayoutDashboard, Package,
@@ -31,8 +31,13 @@ const stats = [
 ]
 
 function App() {
+  const [summary, setSummary] = useState({ revenue: 0, orders: 0, grossProfit: 0, lowStockItems: 0, currency: 'PKR' })
   const [active, setActive] = useState('Dashboard')
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    void window.desktop.dashboard.getSummary().then(setSummary).catch(() => undefined)
+  }, [])
 
   const groups = [...new Set(navItems.map((item) => item.group))]
 
@@ -64,7 +69,7 @@ function App() {
                   >
                     <Icon size={18} strokeWidth={1.9} />
                     <span>{item.label}</span>
-                    {item.label === 'Inventory' && <span className="nav-count">0</span>}
+                    {item.label === 'Inventory' && <span className="nav-count">{summary.lowStockItems}</span>}
                   </button>
                 )
               })}
@@ -110,10 +115,17 @@ function App() {
           <section className="stats-grid">
             {stats.map((stat, index) => {
               const Icon = stat.icon
+              const displayValue = index === 0
+                ? new Intl.NumberFormat('en-PK', { style: 'currency', currency: summary.currency, maximumFractionDigits: 0 }).format(summary.revenue)
+                : index === 1
+                  ? String(summary.orders)
+                  : index === 2
+                    ? new Intl.NumberFormat('en-PK', { style: 'currency', currency: summary.currency, maximumFractionDigits: 0 }).format(summary.grossProfit)
+                    : String(summary.lowStockItems)
               return (
                 <article className="stat-card" key={stat.label}>
                   <div className="stat-top"><span>{stat.label}</span><div className={`stat-icon ${stat.tone}`}><Icon size={19} /></div></div>
-                  <div className="stat-value">{stat.value}</div>
+                  <div className="stat-value">{displayValue}</div>
                   <div className="stat-foot">{index === 0 ? <ArrowUpRight size={15} /> : index === 3 ? <ArrowDownRight size={15} /> : <Activity size={14} />}<span>{stat.change}</span></div>
                 </article>
               )
