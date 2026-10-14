@@ -1,6 +1,6 @@
 # Abyte Simple POS & RMS
 
-A modern, offline-first Windows desktop application for retail businesses and restaurants, built with Electron, React, TypeScript, and SQLite.
+A modern, offline-first Windows desktop POS and restaurant management application built with Electron, React, TypeScript, and SQLite.
 
 ## Planned modules
 
@@ -18,30 +18,33 @@ A modern, offline-first Windows desktop application for retail businesses and re
 - Electron + electron-vite
 - React + TypeScript
 - Tailwind CSS
-- SQLite (local database; no cloud database required)
+- **SQLite via sql.js/WebAssembly** (local SQLite file; no native SQLite addon or cloud database required)
 - Zustand for client state where needed
 - Recharts for analytics
 
-## Development status
-
-The repository is being initialized. The current foundation establishes the desktop app shell and navigation. Business modules and persistent SQLite storage will be implemented incrementally with migrations and tests.
+The database remains a standard SQLite database file. sql.js loads it in the Electron main process and persists updates to the local app data directory. Because sql.js uses WebAssembly rather than a native Node addon, this database setup does not require compiling `better-sqlite3` with Visual Studio C++ Build Tools.
 
 ## Requirements
 
-- Node.js LTS
+- Node.js 24.x (the current project is designed to avoid a native SQLite build step)
 - npm
-- Windows, macOS, or Linux for development (Windows is the primary release target)
+- Windows is the primary release target
 
 ## Getting started
 
-```bash
+From the project folder:
+
+```powershell
 npm install
 npm run dev
 ```
 
+No `npm run postinstall` step is required for SQLite native compilation.
+
 ## Build
 
-```bash
+```powershell
+npm run typecheck
 npm run build
 npm run dist
 ```
@@ -49,9 +52,13 @@ npm run dist
 ## Offline-first principles
 
 - Normal business operations must not require internet access.
-- Business data will be stored locally in SQLite.
-- Database access will remain in Electron's main process and be exposed through a narrow, validated IPC API.
-- Backups will be user-controlled and stored locally or on removable media.
+- Business data is stored locally in SQLite at Electron's per-user application data directory.
+- Database access stays in Electron's main process and is exposed through a narrow, validated IPC API.
+- Database snapshots are written to disk after mutations and on close; backups and restore workflows should be added before production use.
+
+## Current implementation status
+
+The current repository contains the desktop shell, dashboard summary, product listing/creation IPC, and the initial schema for products, categories, customers, suppliers, sales, payments, expenses, and stock movements. Several navigation entries are still placeholders; the full POS checkout, reporting, permissions, backup/restore, and restaurant workflows are not complete yet.
 
 ## Security
 
