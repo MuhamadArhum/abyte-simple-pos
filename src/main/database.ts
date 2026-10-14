@@ -1,9 +1,15 @@
-import Database from 'better-sqlite3'
+import initSqlJs, { type Database as SqlJsDatabase, type SqlValue } from 'sql.js'
 import { app } from 'electron'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-let database: Database.Database | null = null
+type Row = Record<string, unknown>
+type RunResult = { changes: number; lastInsertRowid: number }
+
+let database: SqlJsDatabase | null = null
+let databasePath = ''
+let transactionDepth = 0
+let dirty = false
 
 const schema = [
   `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -126,32 +132,140 @@ const schema = [
   'CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id, created_at)',
 ]
 
-export function getDatabase(): Database.Database {
-  if (database) return database
-
-  const directory = join(app.getPath('userData'), 'data')
-  mkdirSync(directory, { recursive: true })
-  const filePath = join(directory, 'abyte-pos.sqlite')
-
-  database = new Database(filePath)
-  database.pragma('foreign_keys = ON')
-  database.pragma('journal_mode = WAL')
-  database.pragma('busy_timeout = 5000')
-
-  const migrate = database.transaction(() => {
-    for (const statement of schema) database!.exec(statement)
-    database!.prepare('INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)').run(1)
-    database!.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('currency', 'PKR')
-    database!.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('business_type', 'universal')
-    database!.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('business_name', 'My Business')
-  })
-  migrate()
-
+function requireDatabase(): SqlJsDatabase {
+  if (!database) throw new Error('Database has not been initialized')
   return database
 }
 
-export function closeDatabase(): void {
+function toValues(sql: string, params?: unknown): SqlValue[] {
+  if (params === undefined || params === null) return []
+  if (Array.isArray(params)) return params as SqlValue[]
+  if (typeof params !== 'object') return [params as SqlValue]
+
+  const record = params as Record<string, SqlValue>
+  const names = [...sql.matchAll(/[@:$]([A-Za-z_][A-Za-z0-9_]*)/g)].map((match) => match[1])
+  return names.length ? names.map((name) => record[name] ?? null) : Object.values(record)
+}
+
+function callParams(args: unknown[]): unknown {
+  return args.length > 1 ? args : args[0]
+}
+
+function rowsFromStatement(sql: string, params?: unknown): Row[] {
+  const db = requireDatabase()
+  const statement = db.prepare(sql)
+  try {
+    const values = toValues(sql, params)
+    if (values.length) statement.bind(values)
+    const rows: Row[] = []
+    while (statement.step()) rows.push(statement.getAsObject() as Row)
+    return rows
+  } finally {
+    statement.free()
+  }
+}
+
+const adapter = {
+  prepare(sql: string) {
+    return {
+      get(...params: unknown[]): Row | undefined {
+        return rowsFromStatement(sql, callParams(params))[0]
+      },
+      all(...params: unknown[]): Row[] {
+        return rowsFromStatement(sql, callParams(params))
+      },
+      run(...params: unknown[]): RunResult {
+        const db = requireDatabase()
+        db.run(sql, toValues(sql, callParams(params)))
+        const changes = db.getRowsModified()
+        const row = db.exec('SELECT last_insert_rowid() AS id')
+        const lastInsertRowid = Number(row[0]?.values[0]?.[0] ?? 0)
+        persist()
+        return { changes, lastInsertRowid }
+      },
+    }
+  },
+  exec(sql: string): void {
+    requireDatabase().exec(sql)
+    persist()
+  },
+  pragma(pragma: string): void {
+    if (/^journal_mode\s*=\s*WAL$/i.test(pragma.trim())) return
+    requireDatabase().run(`PRAGMA ${pragma}`)
+  },
+  transaction<T>(callback: () => T): () => T {
+    return () => {
+      const db = requireDatabase()
+      const outermost = transactionDepth === 0
+      if (outermost) db.run('BEGIN TRANSACTION')
+      transactionDepth += 1
+      try {
+        const result = callback()
+        transactionDepth -= 1
+        if (outermost) {
+          db.run('COMMIT')
+          if (dirty) persist()
+        }
+        return result
+      } catch (error) {
+        transactionDepth -= 1
+        if (outermost) {
+          db.run('ROLLBACK')
+          dirty = false
+        }
+        throw error
+      }
+    }
+  },
+  close(): void {
+    const db = database
+    if (!db) return
+    if (transactionDepth > 0) throw new Error('Cannot close the database during a transaction')
+    writeFileSync(databasePath, Buffer.from(db.export()))
+    db.close()
+    database = null
+  },
+}
+
+function persist(): void {
   if (!database) return
-  database.close()
-  database = null
+  if (transactionDepth > 0) {
+    dirty = true
+    return
+  }
+  writeFileSync(databasePath, Buffer.from(database.export()))
+  dirty = false
+}
+
+export async function initializeDatabase(): Promise<void> {
+  if (database) return
+  const directory = join(app.getPath('userData'), 'data')
+  mkdirSync(directory, { recursive: true })
+  databasePath = join(directory, 'abyte-pos.sqlite')
+
+  const SQL = await initSqlJs({
+    locateFile: (file) => join(app.getAppPath(), 'node_modules', 'sql.js', 'dist', file),
+  })
+  const initialBytes = existsSync(databasePath) ? readFileSync(databasePath) : undefined
+  database = initialBytes ? new SQL.Database(new Uint8Array(initialBytes)) : new SQL.Database()
+  database.run('PRAGMA foreign_keys = ON')
+
+  const migrate = adapter.transaction(() => {
+    for (const statement of schema) adapter.exec(statement)
+    adapter.prepare('INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)').run(1)
+    adapter.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('currency', 'PKR')
+    adapter.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('business_type', 'universal')
+    adapter.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('business_name', 'My Business')
+  })
+  migrate()
+  persist()
+}
+
+export function getDatabase() {
+  if (!database) throw new Error('Database has not been initialized')
+  return adapter
+}
+
+export function closeDatabase(): void {
+  adapter.close()
 }
