@@ -12,15 +12,18 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "postinstall": "electron-builder install-app-deps",
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
+    "better-sqlite3": "^11.7.0",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -43,6 +46,9 @@
     "files": [
       "out/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ],
     "win": {
       "target": [
