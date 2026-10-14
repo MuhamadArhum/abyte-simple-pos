@@ -71,7 +71,7 @@ export function registerIpcHandlers(): void {
       SELECT
         COALESCE(SUM(total_amount), 0) AS revenue,
         COUNT(*) AS orders,
-        COALESCE(SUM(total_amount - cost_amount - discount_amount), 0) AS gross_profit
+        COALESCE(SUM(total_amount - cost_amount), 0) AS gross_profit
       FROM sales
       WHERE status = 'completed' AND date(created_at, 'localtime') = ?
     `).get(today.day) as { revenue: number; orders: number; gross_profit: number }
