@@ -1,6 +1,6 @@
 import initSqlJs, { type Database as SqlJsDatabase, type SqlValue } from 'sql.js'
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 type Row = Record<string, unknown>
@@ -221,7 +221,9 @@ const adapter = {
     const db = database
     if (!db) return
     if (transactionDepth > 0) throw new Error('Cannot close the database during a transaction')
-    writeFileSync(databasePath, Buffer.from(db.export()))
+    const temporaryPath = `${databasePath}.tmp`
+    writeFileSync(temporaryPath, Buffer.from(db.export()))
+    renameSync(temporaryPath, databasePath)
     db.close()
     database = null
   },
@@ -233,7 +235,9 @@ function persist(): void {
     dirty = true
     return
   }
-  writeFileSync(databasePath, Buffer.from(database.export()))
+  const temporaryPath = `${databasePath}.tmp`
+  writeFileSync(temporaryPath, Buffer.from(database.export()))
+  renameSync(temporaryPath, databasePath)
   dirty = false
 }
 
