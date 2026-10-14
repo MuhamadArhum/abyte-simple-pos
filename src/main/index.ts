@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { closeDatabase, getDatabase } from './database'
+import { closeDatabase, initializeDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
 
 function createWindow(): void {
@@ -26,14 +26,19 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  getDatabase()
-  registerIpcHandlers()
-  createWindow()
+app.whenReady().then(async () => {
+  try {
+    await initializeDatabase()
+    registerIpcHandlers()
+    createWindow()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  } catch (error) {
+    console.error('Failed to initialize Abyte Simple POS:', error)
+    app.quit()
+  }
 })
 
 app.on('before-quit', () => {
