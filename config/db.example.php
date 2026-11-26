@@ -4,7 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 $host = '127.0.0.1';
-$dbname = 'simple_pos';
+$dbname = 'abyte-simple-pos';
 $username = 'root';
 $password = '';
 
