@@ -1,9 +1,23 @@
 <?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/csrf.php';
 
 if (!isset($_SESSION['pos_cart']) || !is_array($_SESSION['pos_cart'])) {
     $_SESSION['pos_cart'] = [];
+}
+
+function generateOrderNo(PDO $pdo): string
+{
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $no = 'ORD-' . date('Ymd-His') . '-' . random_int(1000, 9999);
+        $st = $pdo->prepare('SELECT 1 FROM orders WHERE order_no = ? LIMIT 1');
+        $st->execute([$no]);
+        if (!$st->fetchColumn()) {
+            return $no;
+        }
+    }
+    return 'ORD-' . date('Ymd-His') . '-' . bin2hex(random_bytes(4));
 }
 
 $error = '';
@@ -15,6 +29,7 @@ $openShiftStmt = $pdo->query("SELECT id, cashier_name FROM shifts WHERE status =
 $openShift = $openShiftStmt->fetch();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add_item') {
@@ -69,17 +84,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $paymentMethod = 'CASH';
             }
 
-            $totalAmount = 0.0;
-            foreach ($_SESSION['pos_cart'] as $row) {
-                $totalAmount += ((float) $row['price']) * ((int) $row['qty']);
-            }
-            $totalAmount = round($totalAmount, 2);
-
             $shiftId = $openShift ? (int) $openShift['id'] : null;
-            $orderNo = 'ORD-' . date('Ymd-His') . '-' . random_int(100, 999);
 
             $pdo->beginTransaction();
             try {
+                // Re-validate every cart line against the DB (ignore session price/name).
+                $orderItems = [];
+                $totalAmount = 0.0;
+                $menuStmt = $pdo->prepare('SELECT id, name, price FROM menu_items WHERE id = ? AND is_active = 1 LIMIT 1');
+
+                foreach ($_SESSION['pos_cart'] as $row) {
+                    $itemId = (int) ($row['item_id'] ?? 0);
+                    $qty = max(1, (int) ($row['qty'] ?? 0));
+                    if ($itemId <= 0 || $qty < 1) {
+                        throw new RuntimeException('Invalid cart item.');
+                    }
+                    $menuStmt->execute([$itemId]);
+                    $dbItem = $menuStmt->fetch();
+                    if (!$dbItem) {
+                        throw new RuntimeException('Item no longer available.');
+                    }
+                    $unitPrice = round((float) $dbItem['price'], 2);
+                    $lineTotal = round($unitPrice * $qty, 2);
+                    $totalAmount += $lineTotal;
+                    $orderItems[] = [
+                        'item_id'    => $itemId,
+                        'item_name'  => (string) $dbItem['name'],
+                        'qty'        => $qty,
+                        'unit_price' => $unitPrice,
+                        'line_total' => $lineTotal,
+                    ];
+                }
+                $totalAmount = round($totalAmount, 2);
+
+                if (empty($orderItems)) {
+                    throw new RuntimeException('Empty cart.');
+                }
+
+                $orderNo = generateOrderNo($pdo);
+
                 $orderStmt = $pdo->prepare(
                     'INSERT INTO orders (shift_id, order_no, payment_method, total_amount, created_at)
                      VALUES (?, ?, ?, ?, NOW())'
@@ -92,17 +135,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      VALUES (?, ?, ?, ?, ?, ?)'
                 );
 
-                foreach ($_SESSION['pos_cart'] as $row) {
-                    $qty = (int) $row['qty'];
-                    $unitPrice = round((float) $row['price'], 2);
-                    $lineTotal = round($unitPrice * $qty, 2);
+                foreach ($orderItems as $oi) {
                     $itemStmt->execute([
                         $orderId,
-                        (int) $row['item_id'],
-                        (string) $row['name'],
-                        $qty,
-                        $unitPrice,
-                        $lineTotal,
+                        $oi['item_id'],
+                        $oi['item_name'],
+                        $oi['qty'],
+                        $oi['unit_price'],
+                        $oi['line_total'],
                     ]);
                 }
 
@@ -167,7 +207,7 @@ require_once __DIR__ . '/includes/header.php';
 <?php if ($printedOrder): ?>
   <div class="receipt-box p-4 mb-4">
     <div class="text-center border-bottom pb-3 mb-3">
-      <h5 class="fw-bold mb-1">POS RECEIPT</h5>
+      <h5 class="fw-bold mb-1"><i class="bi bi-receipt me-1"></i>POS RECEIPT</h5>
       <div class="small text-muted num-col">Order #: <?= htmlspecialchars($printedOrder['order_no']) ?></div>
       <div class="small text-muted num-col">Date: <?= htmlspecialchars($printedOrder['created_at']) ?></div>
     </div>
@@ -203,15 +243,15 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 
     <div class="d-flex gap-2 no-print">
-      <button type="button" onclick="window.print()" class="btn btn-dark w-100 fw-semibold">Print Bill</button>
-      <a href="pos.php" class="btn btn-primary w-100 fw-semibold">New Order</a>
+      <button type="button" onclick="window.print()" class="btn btn-dark w-100 fw-semibold"><i class="bi bi-printer"></i> Print Bill</button>
+      <a href="pos.php" class="btn btn-primary w-100 fw-semibold"><i class="bi bi-plus-circle"></i> New Order</a>
     </div>
   </div>
 <?php else: ?>
 
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print">
     <div>
-      <h3 class="mb-0 fw-bold">POS Counter</h3>
+      <h3 class="mb-0 page-heading"><i class="bi bi-cart3 me-2"></i>POS Counter</h3>
       <small class="text-muted">Item click karein, quantity set karein, aur bill complete karein</small>
     </div>
     <div>
@@ -236,11 +276,14 @@ require_once __DIR__ . '/includes/header.php';
 
   <div class="row g-4 align-items-start">
     <!-- Left: Filter + Menu Grid -->
-    <div class="col-lg-7 no-print">
-      <div class="pos-card p-3 mb-3">
+    <div class="col-lg-7 no-print pos-menu">
+      <div class="pos-card p-3 mb-3 pos-filter">
         <form method="get" class="row g-2">
           <div class="col-md-6">
-            <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" class="form-control" placeholder="Search item name or SKU...">
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" class="form-control" placeholder="Search item name or SKU...">
+            </div>
           </div>
           <div class="col-md-4">
             <select name="cat" class="form-select">
@@ -255,7 +298,7 @@ require_once __DIR__ . '/includes/header.php';
           <div class="col-md-2 d-flex gap-1">
             <button type="submit" class="btn btn-dark w-100">Go</button>
             <?php if ($search !== '' || $selectedCat !== ''): ?>
-              <a href="pos.php" class="btn btn-outline-secondary" title="Reset">&times;</a>
+              <a href="pos.php" class="btn btn-outline-secondary" title="Reset"><i class="bi bi-x-lg"></i></a>
             <?php endif; ?>
           </div>
         </form>
@@ -264,7 +307,8 @@ require_once __DIR__ . '/includes/header.php';
       <div class="row g-2">
         <?php if (!$menuItems): ?>
           <div class="col-12">
-            <div class="pos-card p-4 text-center text-muted">
+            <div class="pos-card empty-state">
+              <i class="bi bi-search"></i>
               Koi menu item nahi mila. <a href="menu_import.php">Menu add ya CSV import karein</a>.
             </div>
           </div>
@@ -272,6 +316,7 @@ require_once __DIR__ . '/includes/header.php';
           <?php foreach ($menuItems as $m): ?>
             <div class="col-sm-6 col-md-4">
               <form method="post" class="h-100">
+                <?= csrf_field() ?>
                 <input type="hidden" name="action" value="add_item">
                 <input type="hidden" name="item_id" value="<?= (int) $m['id'] ?>">
                 <button type="submit" class="menu-tile w-100 h-100 text-start p-3 d-flex flex-column justify-content-between">
@@ -280,8 +325,8 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="fw-bold text-dark"><?= htmlspecialchars($m['name']) ?></div>
                   </div>
                   <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center">
-                    <span class="fw-bold text-primary num-col"><?= number_format((float) $m['price'], 2) ?></span>
-                    <span class="small text-muted">+ Add</span>
+                    <span class="tile-price num-col"><?= number_format((float) $m['price'], 2) ?></span>
+                    <span class="tile-add"><i class="bi bi-plus-circle"></i> Add</span>
                   </div>
                 </button>
               </form>
@@ -292,26 +337,28 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 
     <!-- Right: Current Bill Cart -->
-    <div class="col-lg-5">
+    <div class="col-lg-5 pos-cart">
       <div class="pos-card p-4">
         <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3 no-print">
-          <h5 class="fw-bold mb-0">Current Bill</h5>
+          <h5 class="fw-bold mb-0"><i class="bi bi-cart3 me-1"></i>Current Bill</h5>
           <?php if (!empty($_SESSION['pos_cart'])): ?>
             <form method="post" class="d-inline">
+              <?= csrf_field() ?>
               <input type="hidden" name="action" value="clear_cart">
-              <button type="submit" class="btn btn-outline-danger btn-sm">Clear Cart</button>
+              <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i> Clear Cart</button>
             </form>
           <?php endif; ?>
         </div>
 
         <?php if (empty($_SESSION['pos_cart'])): ?>
-          <div class="text-center text-muted py-5">
+          <div class="empty-state py-5">
+            <i class="bi bi-cart-x"></i>
             <div class="fw-semibold mb-1">Bill khaali hai</div>
             <div class="small">Left side se menu items click karke add karein.</div>
           </div>
         <?php else: ?>
           <div class="table-responsive mb-3">
-            <table class="table table-sm align-middle mb-0">
+            <table class="table table-sm align-middle mb-0 cart-table">
               <thead class="table-light">
                 <tr>
                   <th>Item</th>
@@ -329,26 +376,29 @@ require_once __DIR__ . '/includes/header.php';
                       <div class="small text-muted num-col"><?= number_format((float) $row['price'], 2) ?> each</div>
                     </td>
                     <td class="text-center">
-                      <div class="d-inline-flex align-items-center gap-1 no-print">
+                      <div class="qty-control no-print">
                         <form method="post" class="d-inline">
+                          <?= csrf_field() ?>
                           <input type="hidden" name="action" value="dec_qty">
                           <input type="hidden" name="item_id" value="<?= (int) $row['item_id'] ?>">
-                          <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2">-</button>
+                          <button type="submit" class="btn btn-outline-secondary qty-btn">-</button>
                         </form>
-                        <span class="px-2 fw-semibold num-col"><?= (int) $row['qty'] ?></span>
+                        <span class="px-1 fw-semibold num-col"><?= (int) $row['qty'] ?></span>
                         <form method="post" class="d-inline">
+                          <?= csrf_field() ?>
                           <input type="hidden" name="action" value="inc_qty">
                           <input type="hidden" name="item_id" value="<?= (int) $row['item_id'] ?>">
-                          <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2">+</button>
+                          <button type="submit" class="btn btn-outline-secondary qty-btn">+</button>
                         </form>
                       </div>
                     </td>
                     <td class="text-end fw-semibold num-col"><?= number_format($line, 2) ?></td>
                     <td class="text-end no-print">
                       <form method="post" class="d-inline">
+                        <?= csrf_field() ?>
                         <input type="hidden" name="action" value="remove_item">
                         <input type="hidden" name="item_id" value="<?= (int) $row['item_id'] ?>">
-                        <button type="submit" class="btn btn-close btn-sm" aria-label="Remove"></button>
+                        <button type="submit" class="btn btn-outline-danger btn-sm qty-btn" aria-label="Remove"><i class="bi bi-x-lg"></i></button>
                       </form>
                     </td>
                   </tr>
@@ -357,14 +407,15 @@ require_once __DIR__ . '/includes/header.php';
             </table>
           </div>
 
-          <div class="bg-light rounded p-3 mb-3">
+          <div class="total-bar mb-3">
             <div class="d-flex justify-content-between align-items-center">
-              <span class="fw-bold fs-6">Grand Total</span>
-              <span class="fw-bold fs-4 text-success num-col"><?= number_format($cartTotal, 2) ?></span>
+              <span class="total-label">Grand Total</span>
+              <span class="total-value num-col"><?= number_format($cartTotal, 2) ?></span>
             </div>
           </div>
 
           <form method="post" class="no-print">
+            <?= csrf_field() ?>
             <input type="hidden" name="action" value="checkout">
             <div class="mb-3">
               <label class="form-label fw-semibold">Payment Method</label>
@@ -374,7 +425,7 @@ require_once __DIR__ . '/includes/header.php';
                 <option value="ONLINE">ONLINE</option>
               </select>
             </div>
-            <button type="submit" class="btn btn-success w-100 py-2 fw-bold fs-6">Complete &amp; Print Bill</button>
+            <button type="submit" class="btn btn-success w-100 py-2 fw-bold fs-6"><i class="bi bi-printer"></i> Complete &amp; Print Bill</button>
           </form>
         <?php endif; ?>
       </div>

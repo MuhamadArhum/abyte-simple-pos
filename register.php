@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/csrf.php';
 
 if (!empty($_SESSION['user_id'])) {
     header('Location: index.php');
@@ -10,6 +11,7 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
     $name = trim($_POST['name'] ?? '');
     $email = strtolower(trim($_POST['email'] ?? ''));
     $password = $_POST['password'] ?? '';
@@ -35,11 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 require_once __DIR__ . '/includes/header.php';
 ?>
-<div class="row justify-content-center py-4">
-  <div class="col-md-5 col-lg-4">
+<div class="auth-wrap">
+  <div class="auth-card">
     <div class="pos-card p-4">
       <div class="text-center mb-4">
-        <span class="badge text-bg-primary mb-2">NEW ACCOUNT</span>
+        <span class="brand-mark mb-3"><i class="bi bi-shop"></i></span>
+        <span class="badge text-bg-primary auth-badge mb-2 d-block w-100"><i class="bi bi-person-plus me-1"></i>NEW ACCOUNT</span>
         <h4 class="fw-bold mb-1">Create Account</h4>
         <div class="text-muted small">POS system use karne ke liye account banayein</div>
       </div>
@@ -54,6 +57,7 @@ require_once __DIR__ . '/includes/header.php';
       <?php endif; ?>
 
       <form method="post">
+        <?= csrf_field() ?>
         <div class="mb-3">
           <label class="form-label fw-semibold">Full Name</label>
           <input type="text" name="name" class="form-control" placeholder="Ali Raza" required autofocus>
@@ -66,13 +70,13 @@ require_once __DIR__ . '/includes/header.php';
           <label class="form-label fw-semibold">Password</label>
           <input type="password" name="password" class="form-control" minlength="6" placeholder="Min. 6 characters" required>
         </div>
-        <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">Create Account</button>
+        <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold"><i class="bi bi-person-plus"></i> Create Account</button>
       </form>
 
       <hr class="my-4">
       <div class="text-center small">
         <span class="text-muted">Already registered?</span>
-        <a href="login.php" class="fw-semibold text-decoration-none">Sign in</a>
+        <a href="login.php" class="fw-semibold text-decoration-none"><i class="bi bi-box-arrow-in-right"></i> Sign in</a>
       </div>
     </div>
   </div>

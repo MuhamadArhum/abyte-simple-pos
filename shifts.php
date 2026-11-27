@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/csrf.php';
 
 $error = '';
 $success = '';
@@ -9,6 +10,7 @@ $openShiftStmt = $pdo->query("SELECT * FROM shifts WHERE status = 'OPEN' ORDER B
 $openShift = $openShiftStmt->fetch();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
     $action = $_POST['action'] ?? '';
 
     if ($action === 'open_shift') {
@@ -67,7 +69,7 @@ $shiftsList = $pdo->query('SELECT * FROM shifts ORDER BY id DESC LIMIT 30')->fet
 
 require_once __DIR__ . '/includes/header.php';
 ?>
-<h3 class="mb-3">Shifts</h3>
+<h3 class="mb-3 page-heading"><i class="bi bi-clock-history me-2"></i>Shifts</h3>
 
 <?php if ($error !== ''): ?>
   <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
@@ -78,13 +80,14 @@ require_once __DIR__ . '/includes/header.php';
 
 <?php if ($openShift): ?>
   <div class="card card-body border-success mb-4">
-    <h5 class="card-title text-success">Active Open Shift #<?= (int) $openShift['id'] ?></h5>
+    <h5 class="card-title text-success"><i class="bi bi-record-circle-fill me-1"></i>Active Open Shift #<?= (int) $openShift['id'] ?></h5>
     <p class="mb-3">
       <strong>Cashier:</strong> <?= htmlspecialchars($openShift['cashier_name']) ?><br>
       <strong>Opened At:</strong> <?= htmlspecialchars($openShift['opened_at']) ?><br>
       <strong>Opening Cash:</strong> <?= number_format((float) $openShift['opening_cash'], 2) ?>
     </p>
     <form method="post" class="row g-2 align-items-end">
+      <?= csrf_field() ?>
       <input type="hidden" name="action" value="close_shift">
       <input type="hidden" name="shift_id" value="<?= (int) $openShift['id'] ?>">
       <div class="col-md-4">
@@ -92,14 +95,15 @@ require_once __DIR__ . '/includes/header.php';
         <input type="number" step="0.01" min="0" name="closing_cash" class="form-control" required>
       </div>
       <div class="col-md-3">
-        <button type="submit" class="btn btn-danger w-100">Close Shift</button>
+        <button type="submit" class="btn btn-danger w-100"><i class="bi bi-stop-circle"></i> Close Shift</button>
       </div>
     </form>
   </div>
 <?php else: ?>
   <div class="card card-body mb-4">
-    <h5 class="card-title">Start New Shift</h5>
+    <h5 class="card-title"><i class="bi bi-play-circle me-1"></i>Start New Shift</h5>
     <form method="post" class="row g-2 align-items-end">
+      <?= csrf_field() ?>
       <input type="hidden" name="action" value="open_shift">
       <div class="col-md-5">
         <label class="form-label">Cashier Name</label>
@@ -110,13 +114,13 @@ require_once __DIR__ . '/includes/header.php';
         <input type="number" step="0.01" min="0" name="opening_cash" value="0.00" class="form-control" required>
       </div>
       <div class="col-md-3">
-        <button type="submit" class="btn btn-primary w-100">Open Shift</button>
+        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-play-circle"></i> Open Shift</button>
       </div>
     </form>
   </div>
 <?php endif; ?>
 
-<h5>Recent Shifts</h5>
+<h5 class="page-heading mb-3"><i class="bi bi-list-ul me-1"></i>Recent Shifts</h5>
 <div class="table-responsive">
   <table class="table table-bordered table-striped bg-white">
     <thead>
@@ -132,7 +136,7 @@ require_once __DIR__ . '/includes/header.php';
     </thead>
     <tbody>
       <?php if (!$shiftsList): ?>
-        <tr><td colspan="7" class="text-center text-muted">Abhi koi shift record nahi hai.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4"><i class="bi bi-inbox d-block fs-4 mb-1"></i>Abhi koi shift record nahi hai.</td></tr>
       <?php else: ?>
         <?php foreach ($shiftsList as $s): ?>
           <tr>

@@ -26,36 +26,51 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
-    <h3 class="mb-0 fw-bold">Dashboard</h3>
+    <h3 class="mb-0 page-heading"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h3>
     <small class="text-muted">Today's overview and quick POS actions</small>
   </div>
-  <div class="d-flex gap-2">
-    <a href="shifts.php" class="btn btn-outline-dark">Shifts</a>
-    <a href="menu_import.php" class="btn btn-outline-primary">Menu</a>
-    <a href="pos.php" class="btn btn-success fw-semibold px-4">Open POS</a>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="shifts.php" class="btn btn-outline-dark"><i class="bi bi-clock-history"></i> Shifts</a>
+    <a href="menu_import.php" class="btn btn-outline-primary"><i class="bi bi-card-list"></i> Menu</a>
+    <a href="pos.php" class="btn btn-success fw-semibold px-4"><i class="bi bi-cart3"></i> Open POS</a>
   </div>
 </div>
 
 <div class="row g-3 mb-4">
   <div class="col-md-4">
-    <div class="pos-card p-4 h-100">
-      <div class="text-muted small text-uppercase fw-semibold">Today's Sales</div>
-      <div class="fs-2 fw-bold mt-1 num-col"><?= number_format((float) $today['total_sales'], 2) ?></div>
-      <div class="small text-muted mt-1">Completed bills today</div>
+    <div class="pos-card stat-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Today's Sales</div>
+          <div class="stat-value num-col"><?= number_format((float) $today['total_sales'], 2) ?></div>
+          <div class="stat-foot">Completed bills today</div>
+        </div>
+        <span class="stat-icon"><i class="bi bi-cash-stack"></i></span>
+      </div>
     </div>
   </div>
   <div class="col-md-4">
-    <div class="pos-card p-4 h-100">
-      <div class="text-muted small text-uppercase fw-semibold">Orders Today</div>
-      <div class="fs-2 fw-bold mt-1 num-col"><?= (int) $today['bill_count'] ?></div>
-      <div class="small text-muted mt-1">Total receipts generated</div>
+    <div class="pos-card stat-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Orders Today</div>
+          <div class="stat-value num-col"><?= (int) $today['bill_count'] ?></div>
+          <div class="stat-foot">Total receipts generated</div>
+        </div>
+        <span class="stat-icon"><i class="bi bi-receipt"></i></span>
+      </div>
     </div>
   </div>
   <div class="col-md-4">
-    <div class="pos-card p-4 h-100">
-      <div class="text-muted small text-uppercase fw-semibold">Active Menu Items</div>
-      <div class="fs-2 fw-bold mt-1 num-col"><?= $menuCount ?></div>
-      <div class="small text-muted mt-1">Ready for billing</div>
+    <div class="pos-card stat-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Active Menu Items</div>
+          <div class="stat-value num-col"><?= $menuCount ?></div>
+          <div class="stat-foot">Ready for billing</div>
+        </div>
+        <span class="stat-icon"><i class="bi bi-card-list"></i></span>
+      </div>
     </div>
   </div>
 </div>
@@ -63,7 +78,7 @@ require_once __DIR__ . '/includes/header.php';
 <div class="row g-4">
   <div class="col-lg-5">
     <div class="pos-card p-4 h-100">
-      <h5 class="fw-bold mb-3">Shift Status</h5>
+      <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2"></i>Shift Status</h5>
       <?php if ($openShift): ?>
         <div class="alert alert-success mb-3">
           <div class="fw-bold">Shift #<?= (int) $openShift['id'] ?> is OPEN</div>
@@ -71,13 +86,13 @@ require_once __DIR__ . '/includes/header.php';
           <div class="small">Opened: <?= htmlspecialchars($openShift['opened_at']) ?></div>
           <div class="small num-col">Opening Cash: <strong><?= number_format((float) $openShift['opening_cash'], 2) ?></strong></div>
         </div>
-        <a href="shifts.php" class="btn btn-outline-danger btn-sm">Manage / Close Shift</a>
+        <a href="shifts.php" class="btn btn-outline-danger btn-sm"><i class="bi bi-stop-circle"></i> Manage / Close Shift</a>
       <?php else: ?>
         <div class="alert alert-warning mb-3">
-          <div class="fw-bold">No Active Shift</div>
+          <div class="fw-bold"><i class="bi bi-exclamation-triangle me-1"></i>No Active Shift</div>
           <div class="small mt-1">Behtar tracking ke liye billing se pehle shift open karein.</div>
         </div>
-        <a href="shifts.php" class="btn btn-primary btn-sm">Open Shift Now</a>
+        <a href="shifts.php" class="btn btn-primary btn-sm"><i class="bi bi-play-circle"></i> Open Shift Now</a>
       <?php endif; ?>
     </div>
   </div>
@@ -85,8 +100,8 @@ require_once __DIR__ . '/includes/header.php';
   <div class="col-lg-7">
     <div class="pos-card p-4 h-100">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold mb-0">Recent Orders</h5>
-        <a href="reports.php" class="small text-decoration-none">View all in Reports &rarr;</a>
+        <h5 class="fw-bold mb-0"><i class="bi bi-receipt me-2"></i>Recent Orders</h5>
+        <a href="reports.php" class="small text-decoration-none">View all in Reports <i class="bi bi-arrow-right"></i></a>
       </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -100,7 +115,7 @@ require_once __DIR__ . '/includes/header.php';
           </thead>
           <tbody>
             <?php if (!$recentOrders): ?>
-              <tr><td colspan="4" class="text-center text-muted py-4">Abhi koi order save nahi hua.</td></tr>
+              <tr><td colspan="4" class="text-center text-muted py-4"><i class="bi bi-inbox d-block fs-4 mb-1"></i>Abhi koi order save nahi hua.</td></tr>
             <?php else: ?>
               <?php foreach ($recentOrders as $ord): ?>
                 <tr>

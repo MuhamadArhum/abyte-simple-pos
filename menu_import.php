@@ -1,11 +1,13 @@
 <?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/csrf.php';
 
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add_manual') {
@@ -98,8 +100,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-if (($_GET['msg'] ?? '') === 'added') {
+$msg = (string) ($_GET['msg'] ?? '');
+if ($msg === 'added') {
     $success = 'Manual menu item add ho gaya hai.';
+} elseif ($msg === 'updated') {
+    $success = 'Menu item update ho gaya hai.';
+} elseif ($msg === 'deleted') {
+    $success = 'Menu item remove ho gaya hai.';
 }
 
 $items = $pdo->query(
@@ -108,7 +115,7 @@ $items = $pdo->query(
 
 require_once __DIR__ . '/includes/header.php';
 ?>
-<h3 class="mb-3">Menu Management (CSV + Manual)</h3>
+<h3 class="mb-3 page-heading"><i class="bi bi-card-list me-2"></i>Menu Management (CSV + Manual)</h3>
 
 <?php if ($error !== ''): ?>
   <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
@@ -121,8 +128,9 @@ require_once __DIR__ . '/includes/header.php';
   <!-- Manual Add Form -->
   <div class="col-lg-6">
     <div class="card card-body h-100">
-      <h5 class="card-title">Add Single Item Manually</h5>
+      <h5 class="card-title"><i class="bi bi-plus-circle me-1"></i>Add Single Item Manually</h5>
       <form method="post" class="row g-2">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_manual">
         <div class="col-md-4">
           <label class="form-label">SKU (Optional)</label>
@@ -141,7 +149,7 @@ require_once __DIR__ . '/includes/header.php';
           <input type="number" step="0.01" min="0" name="price" class="form-control" placeholder="120.00" required>
         </div>
         <div class="col-12 mt-2">
-          <button type="submit" class="btn btn-success w-100">Add Item</button>
+          <button type="submit" class="btn btn-success w-100"><i class="bi bi-plus-lg"></i> Add Item</button>
         </div>
       </form>
     </div>
@@ -150,25 +158,26 @@ require_once __DIR__ . '/includes/header.php';
   <!-- CSV Import Form -->
   <div class="col-lg-6">
     <div class="card card-body h-100">
-      <h5 class="card-title">Import Menu via CSV</h5>
+      <h5 class="card-title"><i class="bi bi-upload me-1"></i>Import Menu via CSV</h5>
       <p class="text-muted small mb-2">
         Format: <code>sku,name,category,price</code> (e.g. <code>B01,Zinger Burger,Burgers,550</code>)
       </p>
       <form method="post" enctype="multipart/form-data" class="row g-2">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="import_csv">
         <div class="col-12">
           <label class="form-label">Select CSV File</label>
           <input type="file" name="csv_file" accept=".csv,text/csv" class="form-control" required>
         </div>
         <div class="col-12 mt-2">
-          <button type="submit" class="btn btn-primary w-100">Import CSV</button>
+          <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload"></i> Import CSV</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
-<h5>Active Menu Items (<?= count($items) ?>)</h5>
+<h5 class="page-heading mb-3"><i class="bi bi-egg-fried me-1"></i>Active Menu Items (<?= count($items) ?>)</h5>
 <div class="table-responsive">
   <table class="table table-bordered table-striped bg-white">
     <thead>
@@ -177,11 +186,12 @@ require_once __DIR__ . '/includes/header.php';
         <th>Name</th>
         <th>Category</th>
         <th>Price</th>
+        <th class="text-end no-print">Actions</th>
       </tr>
     </thead>
     <tbody>
       <?php if (!$items): ?>
-        <tr><td colspan="4" class="text-center text-muted">Abhi koi menu item nahi hai.</td></tr>
+        <tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-inbox d-block fs-4 mb-1"></i>Abhi koi menu item nahi hai.</td></tr>
       <?php else: ?>
         <?php foreach ($items as $item): ?>
           <tr>
@@ -189,6 +199,9 @@ require_once __DIR__ . '/includes/header.php';
             <td><?= htmlspecialchars($item['name']) ?></td>
             <td><?= htmlspecialchars($item['category']) ?></td>
             <td><?= number_format((float) $item['price'], 2) ?></td>
+            <td class="text-end no-print">
+              <a href="menu_edit.php?id=<?= (int) $item['id'] ?>" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil-square"></i> Edit</a>
+            </td>
           </tr>
         <?php endforeach; ?>
       <?php endif; ?>

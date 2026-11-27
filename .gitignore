@@ -5,6 +5,7 @@ error_log
 *.tmp
 *.bak
 *.sql
+!database/schema.sql
 .DS_Store
 Thumbs.db
 .vscode/

@@ -59,10 +59,10 @@ $exportQuery = http_build_query([
 require_once __DIR__ . '/includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 no-print">
-  <h3 class="mb-0">Sales Reports</h3>
+  <h3 class="mb-0 page-heading"><i class="bi bi-graph-up-arrow me-2"></i>Sales Reports</h3>
   <div class="d-flex gap-2">
-    <a href="export_csv.php?<?= htmlspecialchars($exportQuery) ?>" class="btn btn-outline-success btn-sm">Export CSV</a>
-    <button type="button" onclick="window.print()" class="btn btn-outline-dark btn-sm">Print Report</button>
+    <a href="export_csv.php?<?= htmlspecialchars($exportQuery) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-download"></i> Export CSV</a>
+    <button type="button" onclick="window.print()" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer"></i> Print Report</button>
   </div>
 </div>
 
@@ -104,15 +104,25 @@ require_once __DIR__ . '/includes/header.php';
 
 <div class="row g-3 mb-4">
   <div class="col-md-6">
-    <div class="card card-body">
-      <div class="text-muted">Filtered Total Sales</div>
-      <h2 class="mt-1"><?= number_format((float) $summary['total_sales'], 2) ?></h2>
+    <div class="card card-body stat-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Filtered Total Sales</div>
+          <div class="stat-value num-col"><?= number_format((float) $summary['total_sales'], 2) ?></div>
+        </div>
+        <span class="stat-icon"><i class="bi bi-cash-stack"></i></span>
+      </div>
     </div>
   </div>
   <div class="col-md-6">
-    <div class="card card-body">
-      <div class="text-muted">Filtered Orders Count</div>
-      <h2 class="mt-1"><?= (int) $summary['order_count'] ?></h2>
+    <div class="card card-body stat-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Filtered Orders Count</div>
+          <div class="stat-value num-col"><?= (int) $summary['order_count'] ?></div>
+        </div>
+        <span class="stat-icon"><i class="bi bi-receipt"></i></span>
+      </div>
     </div>
   </div>
 </div>
@@ -130,7 +140,7 @@ require_once __DIR__ . '/includes/header.php';
     </thead>
     <tbody>
       <?php if (!$orders): ?>
-        <tr><td colspan="5" class="text-center text-muted">Selected filters ke mutabiq koi order nahi mila.</td></tr>
+        <tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-inbox d-block fs-4 mb-1"></i>Selected filters ke mutabiq koi order nahi mila.</td></tr>
       <?php else: ?>
         <?php foreach ($orders as $o): ?>
           <tr>
