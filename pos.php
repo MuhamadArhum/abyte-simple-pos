@@ -78,16 +78,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'checkout') {
         if (empty($_SESSION['pos_cart'])) {
             $error = 'Cart khaali hai. Pehle koi item add karein.';
+        } elseif (!$openShift || (int) ($_POST['shift_id'] ?? 0) !== (int) $openShift['id']) {
+            $error = 'Active shift check karke checkout dobara karein.';
         } else {
-            $paymentMethod = strtoupper(trim((string) ($_POST['payment_method'] ?? 'CASH')));
-            if (!in_array($paymentMethod, ['CASH', 'CARD', 'ONLINE'], true)) {
-                $paymentMethod = 'CASH';
-            }
+            $paymentMethod = $_POST['payment_method'] ?? '';
+            $shiftId = (int) $openShift['id'];
 
-            $shiftId = $openShift ? (int) $openShift['id'] : null;
-
-            $pdo->beginTransaction();
             try {
+                if (!in_array($paymentMethod, ['CASH', 'CARD', 'ONLINE'], true)) {
+                    throw new DomainException('Valid payment method select karein.');
+                }
+                $pdo->beginTransaction();
+                $shiftStmt = $pdo->prepare("SELECT id FROM shifts WHERE id = ? AND status = 'OPEN' FOR UPDATE");
+                $shiftStmt->execute([$shiftId]);
+                if (!$shiftStmt->fetchColumn()) {
+                    throw new DomainException('Shift close ho gayi hai. Checkout dobara karein.');
+                }
                 // Re-validate every cart line against the DB (ignore session price/name).
                 $orderItems = [];
                 $totalAmount = 0.0;
@@ -95,14 +101,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 foreach ($_SESSION['pos_cart'] as $row) {
                     $itemId = (int) ($row['item_id'] ?? 0);
-                    $qty = max(1, (int) ($row['qty'] ?? 0));
+                    $qty = (int) ($row['qty'] ?? 0);
                     if ($itemId <= 0 || $qty < 1) {
                         throw new RuntimeException('Invalid cart item.');
                     }
                     $menuStmt->execute([$itemId]);
                     $dbItem = $menuStmt->fetch();
                     if (!$dbItem) {
-                        throw new RuntimeException('Item no longer available.');
+                        throw new DomainException('Cart mein ek item ab available nahi hai. Usay remove karke dobara checkout karein.');
                     }
                     $unitPrice = round((float) $dbItem['price'], 2);
                     $lineTotal = round($unitPrice * $qty, 2);
@@ -151,8 +157,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: pos.php?receipt=' . $orderId);
                 exit;
             } catch (Throwable $e) {
-                $pdo->rollBack();
-                $error = 'Order save karne mein error aya.';
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $error = $e instanceof DomainException ? $e->getMessage() : 'Order save karne mein error aya.';
             }
         }
     }
@@ -414,9 +422,13 @@ require_once __DIR__ . '/includes/header.php';
             </div>
           </div>
 
+          <?php if (!$openShift): ?>
+            <a href="shifts.php" class="btn btn-primary w-100 no-print">Open a Shift to Check Out</a>
+          <?php else: ?>
           <form method="post" class="no-print">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="checkout">
+            <input type="hidden" name="shift_id" value="<?= (int) $openShift['id'] ?>">
             <div class="mb-3">
               <label class="form-label fw-semibold">Payment Method</label>
               <select name="payment_method" class="form-select">
@@ -427,6 +439,7 @@ require_once __DIR__ . '/includes/header.php';
             </div>
             <button type="submit" class="btn btn-success w-100 py-2 fw-bold fs-6"><i class="bi bi-printer"></i> Complete &amp; Print Bill</button>
           </form>
+          <?php endif; ?>
         <?php endif; ?>
       </div>
     </div>

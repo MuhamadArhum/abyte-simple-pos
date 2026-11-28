@@ -13,14 +13,15 @@ No framework, no Composer, no build step. Fast text-based food/item billing.
   - session cart, quantity +/-, remove, clear
   - payment **CASH / CARD / ONLINE**
   - **atomic checkout** (`orders` + `order_items` in a transaction)
+  - checkout requires an open shift. Open one from the counter or Shifts page before saving a sale.
   - **printable receipt** (print CSS, 58/80mm-friendly layout)
   - **server re-validation** of price/availability at checkout (not trusting the session cart)
 - **Order history + reprint** (`orders.php`)
-- **Shifts** (`shifts.php`) — open / close shift, opening/closing cash, list
+- **Shifts** (`shifts.php`) — open and close shifts, review expected cash (opening cash plus cash sales), and compare it with the amount counted at closing
 - **Menu management** (`menu_import.php`, `menu_edit.php`)
   - manual add, **CSV import** (`sku,name,category,price`, header/BOM handling, invalid-row skip, transaction)
   - **edit** + **remove** (soft delete via `is_active`)
-- **Reports** (`reports.php`) — date range, shift, payment filters, totals
+- **Reports** (`reports.php`) — inclusive date range, shift, payment filters, totals. Reversed dates are put in chronological order.
 - **CSV export** (`export_csv.php`) — filtered order export
 - **Dashboard** (`index.php`) — today's sales, orders, active items, shift status, recent orders
 

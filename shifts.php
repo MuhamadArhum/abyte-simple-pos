@@ -6,7 +6,12 @@ require_once __DIR__ . '/includes/csrf.php';
 $error = '';
 $success = '';
 
-$openShiftStmt = $pdo->query("SELECT * FROM shifts WHERE status = 'OPEN' ORDER BY id DESC LIMIT 1");
+$openShiftSql = "SELECT s.*, COALESCE((
+    SELECT SUM(o.total_amount) FROM orders o
+    WHERE o.shift_id = s.id AND o.payment_method = 'CASH'
+), 0) AS cash_sales
+FROM shifts s WHERE s.status = 'OPEN' ORDER BY s.id DESC LIMIT 1";
+$openShiftStmt = $pdo->query($openShiftSql);
 $openShift = $openShiftStmt->fetch();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -30,9 +35,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'INSERT INTO shifts (user_id, cashier_name, opened_at, opening_cash, status)
                  VALUES (?, ?, NOW(), ?, "OPEN")'
             );
-            $stmt->execute([$_SESSION['user_id'], $cashierName, $openingCash]);
-            header('Location: shifts.php?msg=opened');
-            exit;
+            // Use a database-scoped lock so two cashiers cannot open a shift together.
+            $lockName = $pdo->query("SELECT SHA2(CONCAT(DATABASE(), ':open_shift'), 256)")->fetchColumn();
+            $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+            $lock->execute([$lockName]);
+            if ((int) $lock->fetchColumn() !== 1) {
+                $error = 'Shift open nahi ho saki. Dobara koshish karein.';
+            } else {
+                try {
+                    if ($pdo->query("SELECT id FROM shifts WHERE status = 'OPEN' LIMIT 1")->fetchColumn()) {
+                        $error = 'Ek shift pehle se open hai. Pehle usay close karein.';
+                    } else {
+                        $stmt->execute([$_SESSION['user_id'], $cashierName, $openingCash]);
+                    }
+                } finally {
+                    $release = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+                    $release->execute([$lockName]);
+                }
+                if ($error === '') {
+                    header('Location: shifts.php?msg=opened');
+                    exit;
+                }
+            }
         }
     } elseif ($action === 'close_shift') {
         $shiftId = (int) ($_POST['shift_id'] ?? 0);
@@ -50,8 +74,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  WHERE id = ? AND status = "OPEN"'
             );
             $stmt->execute([$closingCash, $shiftId]);
-            header('Location: shifts.php?msg=closed');
-            exit;
+            if ($stmt->rowCount() === 1) {
+                header('Location: shifts.php?msg=closed');
+                exit;
+            }
+            $error = 'Shift pehle hi close ho chuki hai.';
         }
     }
 }
@@ -62,10 +89,13 @@ if (($_GET['msg'] ?? '') === 'opened') {
     $success = 'Shift close ho gayi hai.';
 }
 
-$openShiftStmt = $pdo->query("SELECT * FROM shifts WHERE status = 'OPEN' ORDER BY id DESC LIMIT 1");
+$openShiftStmt = $pdo->query($openShiftSql);
 $openShift = $openShiftStmt->fetch();
 
-$shiftsList = $pdo->query('SELECT * FROM shifts ORDER BY id DESC LIMIT 30')->fetchAll();
+$shiftsList = $pdo->query("SELECT s.*, COALESCE((
+    SELECT SUM(o.total_amount) FROM orders o
+    WHERE o.shift_id = s.id AND o.payment_method = 'CASH'
+), 0) AS cash_sales FROM shifts s ORDER BY s.id DESC LIMIT 30")->fetchAll();
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -84,7 +114,9 @@ require_once __DIR__ . '/includes/header.php';
     <p class="mb-3">
       <strong>Cashier:</strong> <?= htmlspecialchars($openShift['cashier_name']) ?><br>
       <strong>Opened At:</strong> <?= htmlspecialchars($openShift['opened_at']) ?><br>
-      <strong>Opening Cash:</strong> <?= number_format((float) $openShift['opening_cash'], 2) ?>
+      <strong>Opening Cash:</strong> <?= number_format((float) $openShift['opening_cash'], 2) ?><br>
+      <strong>Cash Sales:</strong> <?= number_format((float) $openShift['cash_sales'], 2) ?><br>
+      <strong>Expected Cash:</strong> <?= number_format((float) $openShift['opening_cash'] + (float) $openShift['cash_sales'], 2) ?>
     </p>
     <form method="post" class="row g-2 align-items-end">
       <?= csrf_field() ?>
@@ -130,22 +162,27 @@ require_once __DIR__ . '/includes/header.php';
         <th>Opened</th>
         <th>Closed</th>
         <th>Opening Cash</th>
+      <th>Expected Cash</th>
         <th>Closing Cash</th>
+      <th>Cash Difference</th>
         <th>Status</th>
       </tr>
     </thead>
     <tbody>
       <?php if (!$shiftsList): ?>
-        <tr><td colspan="7" class="text-center text-muted py-4"><i class="bi bi-inbox d-block fs-4 mb-1"></i>Abhi koi shift record nahi hai.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-inbox d-block fs-4 mb-1"></i>Abhi koi shift record nahi hai.</td></tr>
       <?php else: ?>
         <?php foreach ($shiftsList as $s): ?>
+          <?php $expectedCash = (float) $s['opening_cash'] + (float) $s['cash_sales']; ?>
           <tr>
             <td><?= (int) $s['id'] ?></td>
             <td><?= htmlspecialchars($s['cashier_name']) ?></td>
             <td><?= htmlspecialchars($s['opened_at']) ?></td>
             <td><?= htmlspecialchars((string) ($s['closed_at'] ?? '-')) ?></td>
             <td><?= number_format((float) $s['opening_cash'], 2) ?></td>
+            <td><?= number_format($expectedCash, 2) ?></td>
             <td><?= $s['closing_cash'] !== null ? number_format((float) $s['closing_cash'], 2) : '-' ?></td>
+            <td><?= $s['closing_cash'] !== null ? number_format(round((float) $s['closing_cash'] - $expectedCash, 2), 2) : '-' ?></td>
             <td>
               <span class="badge <?= $s['status'] === 'OPEN' ? 'bg-success' : 'bg-secondary' ?>">
                 <?= htmlspecialchars($s['status']) ?>

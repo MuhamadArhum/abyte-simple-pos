@@ -3,21 +3,9 @@
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// --- Filters (same rules as reports.php) ---
-$fromDate = trim((string) ($_GET['from_date'] ?? date('Y-m-d')));
-$toDate   = trim((string) ($_GET['to_date'] ?? date('Y-m-d')));
-$shiftId  = (int) ($_GET['shift_id'] ?? 0);
-$paymentMethod = strtoupper(trim((string) ($_GET['payment_method'] ?? '')));
+require_once __DIR__ . '/includes/order_report.php';
 
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromDate)) { $fromDate = date('Y-m-d'); }
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $toDate))   { $toDate   = date('Y-m-d'); }
-if (!in_array($paymentMethod, ['CASH', 'CARD', 'ONLINE'], true)) { $paymentMethod = ''; }
-
-$where  = ['DATE(o.created_at) >= ?', 'DATE(o.created_at) <= ?'];
-$params = [$fromDate, $toDate];
-if ($shiftId > 0) { $where[] = 'o.shift_id = ?'; $params[] = $shiftId; }
-if ($paymentMethod !== '') { $where[] = 'o.payment_method = ?'; $params[] = $paymentMethod; }
-$whereSql = implode(' AND ', $where);
+['whereSql' => $whereSql, 'params' => $params] = orderReportFilters($_GET);
 
 $sql = "SELECT o.id, o.order_no, o.created_at, o.shift_id, s.cashier_name, o.payment_method, o.total_amount
         FROM orders o
